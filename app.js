@@ -2,9 +2,11 @@ const grid = document.querySelector("#mission-grid");
 const dialog = document.querySelector("#mission-dialog");
 const body = document.querySelector("#dialog-body");
 const finalButton = document.querySelector("#final-button");
+const heroButton = document.querySelector("#hero-button");
 const storageKey = "byummy-mission-progress-v1";
 const motion = matchMedia("(prefers-reduced-motion: reduce)");
 const completed = new Set();
+const checkpoints = {};
 let finalComplete = false;
 let session;
 let opener;
@@ -15,18 +17,26 @@ try {
   if (Array.isArray(saved?.missions)) {
     missions.forEach((mission, index) => {
       if (saved.missions.includes(index)) completed.add(index);
+      const checkpoint = saved.checkpoints?.[index];
+      if (!completed.has(index) && Number.isInteger(checkpoint?.step)
+          && checkpoint.step > 0 && checkpoint.step < mission.activities.length) {
+        checkpoints[index] = {
+          step: checkpoint.step,
+          badge: /^#[a-f0-9]{6}$/i.test(checkpoint.badge) ? checkpoint.badge : ""
+        };
+      }
     });
     finalComplete = saved.final === true && completed.size === missions.length;
   }
 } catch {
-  // The missions still work when browser storage is unavailable.
+  // The game can run without storage.
 }
 
 function saveProgress() {
   try {
-    localStorage.setItem(storageKey, JSON.stringify({ missions: [...completed], final: finalComplete }));
+    localStorage.setItem(storageKey, JSON.stringify({ missions: [...completed], final: finalComplete, checkpoints }));
   } catch {
-    // Progress remains available until the page closes.
+    // Progress remains available during this visit.
   }
   showProgress();
 }
@@ -36,162 +46,332 @@ function showProgress() {
     node.textContent = `${completed.size} / ${missions.length}`;
   });
   document.querySelector("#progress").value = completed.size;
-  document.querySelector(".header-progress").setAttribute("aria-label", `Mission progress, ${completed.size} of ${missions.length} completed`);
-  grid.querySelectorAll("button").forEach((button, index) => {
+  document.querySelector(".header-progress").setAttribute("aria-label", `Mission progress, ${completed.size} of ${missions.length} cleared`);
+  heroButton.innerHTML = `${completed.size === missions.length ? "Open flight deck" : completed.size || Object.keys(checkpoints).length ? "Continue training" : "Start training"} <span aria-hidden="true">↗</span>`;
+  grid.querySelectorAll(".card").forEach((card, index) => {
     const done = completed.has(index);
-    const action = done ? "Replay mission" : "Start mission";
-    button.innerHTML = `${action} <span aria-hidden="true">${done ? "✓" : "→"}</span>`;
-    button.setAttribute("aria-label", `${action} for ${missions[index].name}`);
+    const resume = Boolean(checkpoints[index]);
+    const verb = done ? "Replay" : resume ? "Resume" : "Start";
+    const button = card.querySelector("button");
+    button.innerHTML = `${verb} mission <span aria-hidden="true">${done ? "↻" : "→"}</span>`;
+    button.setAttribute("aria-label", `${verb} mission for ${missions[index].name}`);
+    card.querySelector(".card-status").textContent = done ? "✓ Cleared" : resume
+      ? `${checkpoints[index].step} / ${missions[index].activities.length} cleared` : "";
   });
   finalButton.disabled = completed.size < missions.length;
   if (!finalButton.disabled) {
     finalButton.innerHTML = `${finalComplete ? "Fly again" : "Open simulator"} <span aria-hidden="true">↗</span>`;
     document.querySelector("#final-description").textContent = finalComplete
-      ? "Final mission complete! Try a new destination or fly the same route again."
-      : "All six missions are complete. Choose a destination and use every school subject to prepare for liftoff.";
+      ? "Both destinations are open. Fly again and handle a different course correction."
+      : "Flight deck unlocked. Choose a destination, clear six systems, and steer into orbit.";
   }
 }
 
 function openMission(index, button) {
   opener = button;
-  session = { index, step: 0, destination: 0, badge: "", route: 0 };
+  const saved = checkpoints[index];
+  session = { index, step: saved?.step ?? 0, destination: 0, badge: saved?.badge ?? "", route: {} };
   render();
   dialog.showModal();
   focusHeading();
 }
 
 function render() {
-  const { index, step } = session;
+  const { index, step, destination } = session;
   const mission = missions[index];
   const isFinal = index === -1;
-  dialog.style.setProperty("--theme", mission?.theme ?? "#2147d2");
-  dialog.style.setProperty("--tint", mission?.tint ?? "#e3e9ff");
-  document.querySelector("#dialog-label").textContent = isFinal ? "FINAL MISSION" : `MISSION ${String(index + 1).padStart(2, "0")} · ${mission.name.toUpperCase()}`;
+  dialog.style.setProperty("--theme", mission?.theme ?? "#83ead9");
+  document.querySelector("#dialog-label").textContent = isFinal
+    ? "BIG ROCKET LAUNCH"
+    : `${mission.name.toUpperCase()} / ${mission.planet.toUpperCase()}`;
 
   if (isFinal && step === 0) {
     body.innerHTML = `
-      <h2 id="screen-title" tabindex="-1">Choose a destination</h2>
-      <p class="briefing">Make six decisions before launch. Your destination changes the route and the science tools you’ll need.</p>
-      <label class="flight-select">Destination
-        <select id="destination">${destinations.map((planet, n) => `<option value="${n}" ${n === session.destination ? "selected" : ""}>${planet.name} · ${planet.detail}</option>`).join("")}</select>
-      </label>
+      <h2 id="screen-title" tabindex="-1">Pick your destination</h2>
+      <p class="briefing">Your route, science kit, and in-flight correction depend on where you go.</p>
+      <div class="destination-grid">
+        ${destinations.map((planet, n) => `
+          <button class="destination" data-destination="${n}" type="button" aria-pressed="${n === destination}" style="--planet:${planet.color}">
+            <span class="planet-dot" aria-hidden="true"></span><span><strong>${planet.name}</strong><small>${planet.detail}</small></span>
+          </button>`).join("")}
+      </div>
       ${flightMarkup()}
       <div class="dialog-actions"><button class="button blue" id="next" type="button">Start flight checks <span aria-hidden="true">→</span></button></div>`;
-    body.querySelector("#destination").addEventListener("change", event => {
-      session.destination = Number(event.target.value);
-      previewFlight();
+    body.querySelectorAll("[data-destination]").forEach(button => {
+      button.addEventListener("click", () => {
+        session.destination = Number(button.dataset.destination);
+        body.querySelectorAll("[data-destination]").forEach(option => {
+          option.setAttribute("aria-pressed", option === button);
+        });
+        previewFlight();
+      });
     });
+    body.querySelector("#next").addEventListener("click", () => advanceStep());
     previewFlight();
-  } else if (!isFinal && step < mission.lessons.length) {
-    const [title, copy] = mission.lessons[step];
+  } else if (isFinal && step === missions.length + 1) {
+    const planet = destinations[destination];
     body.innerHTML = `
-      ${stepMarkup(step + 1, mission.lessons.length + 1, "Step")}
-      <h2 id="screen-title" tabindex="-1">${title}</h2>
-      <p class="briefing">${copy}</p>
-      <div class="dialog-actions">
-        ${step > 0 ? backMarkup() : ""}
-        <button class="button blue" id="next" type="button">${step + 1 === mission.lessons.length ? "Play minigame" : "Next step"} <span aria-hidden="true">→</span></button>
-      </div>`;
-  } else if (isFinal && step > missions.length) {
-    const planet = destinations[session.destination];
-    body.innerHTML = `
-      <h2 id="screen-title" tabindex="-1">All systems go!</h2>
-      <p class="briefing">All six flight checks passed. Your rocket is cleared for ${planet.name}.</p>
+      <h2 id="screen-title" tabindex="-1">All systems go</h2>
+      <p class="briefing">Six systems cleared. You’re headed for ${planet.name}, ${planet.distance} map units away.</p>
       ${flightMarkup()}
-      <p class="flight-stats">Destination: <strong>${planet.name}</strong> · Distance: <strong>${planet.distance} map units</strong></p>
       <p class="feedback success" id="feedback" role="status"></p>
       <div class="dialog-actions"><button class="button orange" id="launch" type="button">Begin countdown <span aria-hidden="true">↗</span></button></div>`;
-    body.querySelector("#launch").addEventListener("click", () => fly(true));
+    body.querySelector("#launch").addEventListener("click", () => fly({ isFinal: true, toCorrection: true, button: body.querySelector("#launch") }));
     previewFlight();
+  } else if (isFinal && step === missions.length + 2) {
+    const planet = destinations[destination];
+    renderChallenge(challenge("number", "Correct your course",
+      destination === 0
+        ? "The rocket has turned 1.25°. It needs a total turn of 2°. Enter the additional turn to reach Aurora’s orbit."
+        : "The rocket has turned 1.40°. It needs a total turn of 1.75°. Enter the additional turn to reach Cinder’s orbit.",
+      planet.correction, "Subtract the current turn from the required total. Line up the decimal points.",
+      "The course correction is set. Fire the steering thrusters to enter orbit.", { unit: "degrees" }),
+      "IN-FLIGHT MANEUVER", true, true);
+  } else if (isFinal) {
+    const subject = missions[step - 1];
+    renderChallenge(subject.final[destination] ?? subject.final[0], subject.name, true);
   } else {
-    const check = isFinal ? missions[step - 1] : mission;
-    const task = isFinal ? check.final[session.destination] ?? check.final[0] : check.task;
-    renderChallenge(check, task, isFinal);
+    renderChallenge(mission.activities[step], "", false, step === mission.activities.length - 1);
   }
-  body.querySelector("#next")?.addEventListener("click", () => changeStep(1));
-  body.querySelector("#back")?.addEventListener("click", () => changeStep(-1));
   focusHeading();
 }
 
-function stepMarkup(step, total, label) {
-  const segments = Array.from({ length: total }, (_, i) => `<span class="${i < step ? "active" : ""}"></span>`);
-  return `<p class="eyebrow accent">${label} ${step} of ${total}</p><div class="steps" aria-hidden="true">${segments.join("")}</div>`;
-}
-
 function flightMarkup() {
-  return '<canvas id="flight" class="flight" width="720" height="205" aria-label="Rocket flight map"></canvas>';
+  return '<canvas id="flight" class="flight" width="720" height="235" aria-label="Rocket flight map"></canvas>';
 }
 
-function backMarkup() {
-  return '<button class="button quiet" id="back" type="button">← Back</button>';
-}
-
-function changeStep(direction) {
-  session.step += direction;
+function advanceStep() {
+  session.step++;
+  const { index, step, badge } = session;
+  if (index >= 0 && !completed.has(index)) {
+    checkpoints[index] = { step, badge };
+    saveProgress();
+  }
   render();
 }
 
 function focusHeading() {
+  if (!dialog.open) return;
   dialog.scrollTop = 0;
-  if (dialog.open) body.querySelector("#screen-title").focus({ preventScroll: true });
+  body.querySelector("#screen-title").focus({ preventScroll: true });
 }
 
-function renderChallenge(check, [title, prompt, choices, answer, hint, result], isFinal) {
-  const math = check === missions[0];
-  const art = check === missions[3];
-  const isPreview = !isFinal || math || art;
-  const current = isFinal ? session.step : check.lessons.length + 1;
-  const total = isFinal ? missions.length : current;
+function renderChallenge(activity, subject, isFinal, canLaunch) {
+  const { kind, title, prompt, answer, hint, takeaway, colors, sources } = activity;
+  const { step, index } = session;
+  const maneuver = isFinal && canLaunch;
+  const current = isFinal ? step : step + 1;
+  const total = isFinal ? missions.length : missions[index].activities.length;
+  const mode = { number: "Calculate", pick: "Select items", sort: "Build a sequence", match: "Match the pairs", swatch: "Design studio", route: "Flight map" };
   body.innerHTML = `
-    ${stepMarkup(current, total, isFinal ? "Flight check" : "Step")}
+    ${maneuver ? '<p class="eyebrow step-caption">IN-FLIGHT MANEUVER</p>' : `
+      <div class="challenge-header"><span class="eyebrow">${isFinal ? subject : mode[kind]}</span><span>${current} / ${total}</span></div>
+      <div class="steps" aria-hidden="true">${Array.from({ length: total }, (_, i) => `<span class="${i < current ? "active" : ""}"></span>`).join("")}</div>`}
     <h2 id="screen-title" tabindex="-1">${title}</h2>
-    ${isFinal ? `<p class="eyebrow accent">${check.name}</p>` : ""}
-    <form>
-      <fieldset class="choices">
+    <form novalidate>
+      <fieldset class="challenge-input">
         <legend>${prompt}</legend>
-        ${choices.map((choice, index) => `<label class="choice"><input type="radio" name="choice" value="${index}" required><span>${choice}</span></label>`).join("")}
+        ${controlMarkup(activity)}
       </fieldset>
-      ${isPreview ? flightMarkup() : ""}
+      ${kind === "route" || kind === "swatch" || maneuver ? flightMarkup() : ""}
       <p class="feedback" id="feedback" role="status"></p>
+      ${sources ? `<div class="activity-sources" hidden>${sources.map(([label, url]) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${label} ↗</a>`).join("")}</div>` : ""}
       <div class="dialog-actions">
-        ${isFinal ? "" : backMarkup()}
-        <button class="button ${isFinal ? "blue" : "orange"}" type="submit">${isFinal ? "Check decision" : "Try launch"} <span aria-hidden="true">↗</span></button>
+        <button class="button quiet" id="hint" type="button">Show hint</button>
+        <button class="button blue" type="submit">Check answer <span aria-hidden="true">→</span></button>
       </div>
     </form>`;
+
   const form = body.querySelector("form");
+  const fieldset = form.querySelector("fieldset");
   const feedback = body.querySelector("#feedback");
-  const selectedColor = index => (isFinal ? ["#fff", "#121f49", "#cad0df"] : ["#482967", "#1a3379", "#ffdf61"])[index];
-  function updatePreview(index) {
-    previewFlight({
-      route: math && index >= 0 ? Number.parseInt(choices[index], 10) : 0,
-      target: math ? (isFinal ? destinations[session.destination].distance / 3 : 4) : 0,
-      stripe: art && index >= 0 ? selectedColor(index) : undefined,
-      dark: art && !isFinal
-    });
+  const submit = form.querySelector('button[type="submit"]');
+  const hintButton = body.querySelector("#hint");
+  const choices = setupControls(activity, fieldset);
+  let cleared = false;
+
+  function showHint(message) {
+    feedback.className = "feedback hint";
+    feedback.textContent = message;
   }
-  form.addEventListener("change", () => {
-    feedback.textContent = "";
-    if (isPreview) updatePreview(Number(form.elements.choice.value));
-  });
+
+  hintButton.addEventListener("click", () => showHint(hint));
   form.addEventListener("submit", event => {
     event.preventDefault();
-    const selected = Number(form.elements.choice.value);
-    if (selected !== answer) {
-      feedback.className = "feedback hint";
-      feedback.textContent = `Try again. ${hint}`;
+    if (cleared) {
+      if (canLaunch) fly({ isFinal, result: takeaway, button: submit, fromCorrection: maneuver });
+      else advanceStep();
       return;
     }
-    if (math) session.route = Number.parseInt(choices[selected], 10);
-    if (art) session.badge = selectedColor(selected);
-    if (isFinal) {
-      changeStep(1);
-    } else {
-      form.querySelector("fieldset").disabled = true;
-      form.querySelector("#back").disabled = true;
-      fly(false, result);
+    const response = choices();
+    if (response === null) {
+      showHint("Finish entering your answer, then check it.");
+      return;
     }
+    const correct = Array.isArray(answer)
+      ? response.length === answer.length && response.every((value, i) => value === answer[i])
+      : Math.abs(response - answer) < 1e-8;
+    if (!correct) {
+      showHint(`Try again. ${hint}`);
+      return;
+    }
+    if (kind === "route") session.route = { target: answer, routeMax: activity.max };
+    if (kind === "swatch") session.badge = colors[answer];
+
+    cleared = true;
+    fieldset.disabled = true;
+    hintButton.hidden = true;
+    feedback.className = "feedback success";
+    feedback.textContent = `✓ ${takeaway}`;
+    const sourceLinks = body.querySelector(".activity-sources");
+    if (sourceLinks) sourceLinks.hidden = false;
+
+    if (canLaunch && !body.querySelector("#flight")) {
+      feedback.insertAdjacentHTML("beforebegin", flightMarkup());
+      previewFlight();
+    }
+    const label = maneuver ? "Fire steering thrusters" : canLaunch ? `Launch to ${missions[index].planet}` : "Continue";
+    submit.innerHTML = `${label} <span aria-hidden="true">→</span>`;
+    if (canLaunch) submit.classList.replace("blue", "orange");
+    submit.focus({ preventScroll: true });
   });
-  if (isPreview) updatePreview(-1);
+  if (maneuver) previewFlight({ amount: .59, orbit: true });
+}
+
+function controlMarkup({ kind, options, colors, rows, unit, max, massLimit }) {
+  switch (kind) {
+    case "number":
+      return `<label class="number-entry" for="answer">Your answer</label><div class="input-row">
+        <input type="text" id="answer" autocomplete="off" spellcheck="false" maxlength="24">
+        <span>${unit}</span></div>`;
+    case "route":
+      return `<div class="route-controls"><label for="route">Trajectory length</label><output for="route" id="route-value">0 segments</output>
+        <div class="route-row">
+          <button type="button" data-nudge="-0.5" aria-label="Subtract half a segment">−</button>
+          <input id="route" type="range" min="0" max="${max}" step="0.5" value="0">
+          <button type="button" data-nudge="0.5" aria-label="Add half a segment">+</button>
+        </div></div>`;
+    case "sort":
+      return `<div class="sort-controls"><ol class="sequence" aria-label="Your sequence"></ol>
+        <div class="tile-grid">${options.map((option, index) => `<button class="tile" data-piece="${index}" type="button">${option}</button>`).join("")}</div>
+        <div class="sort-actions"><button class="button quiet" type="button" id="undo">Undo last</button><button class="button quiet" type="button" id="reset-order">Clear order</button></div></div>`;
+    case "match":
+      return `<div class="match-grid">${rows.map(row => `<label class="match-row"><span>${row}</span>
+        <select><option value="">Choose a match</option>${options.map((option, index) => `<option value="${index}">${option}</option>`).join("")}</select>
+        </label>`).join("")}</div>`;
+    case "pick":
+      return `<div class="tile-grid">${options.map((option, index) => `<label class="tile tile-choice"><input type="checkbox" value="${index}"><span>${option}</span></label>`).join("")}</div>
+        ${massLimit ? `<div class="cargo"><div><label for="mass">Payload mass</label><output id="mass-readout">0 / ${massLimit} kg</output></div>
+          <progress id="mass" value="0" max="${massLimit}"></progress></div>` : ""}`;
+    case "swatch":
+      return `<div class="tile-grid swatches">${options.map((option, index) => `<label class="tile tile-choice">
+        <input type="radio" name="swatch" value="${index}"><span class="swatch" style="--swatch:${colors[index]}" aria-hidden="true"></span><span>${option}</span>
+        </label>`).join("")}</div>`;
+  }
+}
+
+function setupControls({ kind, answer, max, colors, dark, options, limit, weights, massLimit }, fieldset) {
+  switch (kind) {
+    case "number":
+      return () => readNumber(fieldset.querySelector("input").value);
+    case "route": {
+      const range = fieldset.querySelector("input");
+      function update() {
+        fieldset.querySelector("output").textContent = `${range.value} ${range.value === "1" ? "segment" : "segments"}`;
+        previewFlight({ route: Number(range.value), target: answer, routeMax: max });
+      }
+      fieldset.querySelectorAll("[data-nudge]").forEach(button => {
+        button.addEventListener("click", () => {
+          range.value = Math.min(max, Math.max(0, Number(range.value) + Number(button.dataset.nudge)));
+          update();
+        });
+      });
+      range.addEventListener("input", update);
+      update();
+      return () => Number(range.value);
+    }
+    case "sort":
+      return setupSequence(fieldset, options, answer.length);
+    case "match":
+      return () => {
+        const values = Array.from(fieldset.querySelectorAll("select"), select => select.value);
+        return values.includes("") ? null : values.map(Number);
+      };
+    case "pick": {
+      const getChecked = () => Array.from(fieldset.querySelectorAll("input:checked"), input => Number(input.value));
+      if (weights) {
+        const readout = fieldset.querySelector("#mass-readout");
+        const gauge = fieldset.querySelector("#mass");
+        fieldset.addEventListener("change", () => {
+          const mass = Number(getChecked().reduce((sum, index) => sum + weights[index], 0).toFixed(2));
+          gauge.value = mass;
+          const over = mass > massLimit;
+          readout.textContent = `${mass} / ${massLimit} kg${over ? " · Over limit" : ""}`;
+          readout.classList.toggle("over-limit", over);
+        });
+      }
+      return () => {
+        const checked = getChecked();
+        return checked.length === 0 || (limit && checked.length !== limit) ? null : checked;
+      };
+    }
+    case "swatch":
+      fieldset.addEventListener("change", event => previewFlight({ stripe: colors[Number(event.target.value)], dark }));
+      previewFlight({ dark });
+      return () => {
+        const color = fieldset.querySelector("input:checked");
+        return color ? Number(color.value) : null;
+      };
+  }
+}
+
+function readNumber(raw) {
+  const entry = raw.trim().replace(",", ".");
+  if (/^-?(?:\d+(?:\.\d*)?|\.\d+)$/.test(entry)) return Number(entry);
+  const fraction = entry.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (fraction && Number(fraction[2]) > 0) return Number(fraction[1]) / Number(fraction[2]);
+  return null;
+}
+
+function setupSequence(fieldset, options, length) {
+  const order = [];
+  const sequence = fieldset.querySelector(".sequence");
+  const pieces = Array.from(fieldset.querySelectorAll("[data-piece]"));
+  const undo = fieldset.querySelector("#undo");
+  const reset = fieldset.querySelector("#reset-order");
+
+  function update() {
+    sequence.innerHTML = Array.from({ length }, (_, i) => `
+      <li class="${i < order.length ? "filled" : ""}"><span>${i + 1}</span>
+        ${i < order.length ? options[order[i]] : "Open slot"}</li>`).join("");
+    pieces.forEach((piece, index) => {
+      const selected = order.includes(index);
+      piece.disabled = selected;
+      piece.classList.toggle("used", selected);
+    });
+    undo.disabled = order.length === 0;
+    reset.disabled = order.length === 0;
+  }
+
+  pieces.forEach((piece, index) => {
+    piece.addEventListener("click", () => {
+      order.push(index);
+      update();
+      (pieces.find(tile => !tile.disabled) ?? body.querySelector('button[type="submit"]')).focus({ preventScroll: true });
+    });
+  });
+  undo.addEventListener("click", () => {
+    const index = order.pop();
+    update();
+    pieces[index]?.focus();
+  });
+  reset.addEventListener("click", () => {
+    order.length = 0;
+    update();
+    pieces[0].focus();
+  });
+  update();
+  return () => order.length === length ? order : null;
 }
 
 function getPlanet() {
@@ -200,53 +380,57 @@ function getPlanet() {
 }
 
 function previewFlight(options = {}) {
-  paintFlight(body.querySelector("#flight"), getPlanet(), {
-    stripe: session.badge,
-    dark: session.index === 3,
-    target: session.route,
-    ...options
-  });
+  paintFlight(body.querySelector("#flight"), getPlanet(), { stripe: session.badge, ...session.route, ...options });
 }
 
-function fly(isFinal, result) {
+function fly({ isFinal, result, button, toCorrection = false, fromCorrection = false }) {
   const active = session;
   const planet = getPlanet();
-  const button = body.querySelector("#launch, button[type=submit]");
   const feedback = body.querySelector("#feedback");
   button.disabled = true;
   feedback.className = "feedback success";
   let start;
   let lastLabel = "";
-  const countdown = isFinal ? 2700 : 700;
-  const duration = isFinal ? 2800 : 1500;
+  const countdown = toCorrection ? 2700 : fromCorrection ? 0 : 700;
+  const duration = isFinal ? 1500 : 1600;
+
   function advance(time) {
     if (!dialog.open || active !== session) return;
     start ??= time;
     const elapsed = time - start;
-    const amount = Math.max(0, Math.min(1, (elapsed - countdown) / duration));
-    const label = elapsed < countdown && isFinal
+    const progress = Math.max(0, Math.min(1, (elapsed - countdown) / duration));
+    const amount = toCorrection ? progress * .59 : fromCorrection ? .59 + progress * .41 : progress;
+    const label = elapsed < countdown && toCorrection
       ? `Liftoff in ${Math.ceil((countdown - elapsed) / 900)}…`
-      : isFinal && amount > .76 ? "Entering orbit…" : "Rocket in flight…";
+      : fromCorrection ? "Entering orbit…" : "Rocket in flight…";
     if (lastLabel !== label) feedback.textContent = label;
     lastLabel = label;
     previewFlight({ amount, orbit: isFinal });
-    if (amount < 1 && !motion.matches) {
+    if (progress < 1 && !motion.matches) {
       frame = requestAnimationFrame(advance);
       return;
     }
+    if (toCorrection) {
+      advanceStep();
+      return;
+    }
     if (isFinal) finalComplete = true;
-    else completed.add(active.index);
+    else {
+      completed.add(active.index);
+      delete checkpoints[active.index];
+    }
     saveProgress();
     body.innerHTML = `
-      <p class="eyebrow accent">✦ MISSION COMPLETE</p>
+      <div class="success-banner"><span aria-hidden="true">✦</span> ${isFinal ? "FINAL FLIGHT CLEARED" : "MISSION CLEARED"}</div>
       <h2 id="screen-title" tabindex="-1">You reached ${planet.name}!</h2>
-      <p class="briefing">${result ?? "Your crew used all six school subjects to prepare, launch, and reach orbit."}</p>
+      <p class="briefing">${isFinal ? "Your crew passed six systems checks, launched, and corrected its course into orbit." : result}</p>
       ${flightMarkup()}
       <div class="dialog-actions"><button class="button blue" id="done" type="button">Back to Mission Control <span aria-hidden="true">→</span></button></div>`;
     previewFlight({ amount: 1, orbit: isFinal });
     body.querySelector("#done").addEventListener("click", () => dialog.close());
     focusHeading();
   }
+
   frame = requestAnimationFrame(advance);
 }
 
@@ -254,15 +438,17 @@ missions.forEach((mission, index) => {
   const card = document.createElement("article");
   card.className = "card";
   card.style.setProperty("--theme", mission.theme);
-  card.style.setProperty("--tint", mission.tint);
+  card.style.setProperty("--planet", mission.color);
   card.innerHTML = `
     <div class="card-art">
-      <span class="number">MISSION ${String(index + 1).padStart(2, "0")}</span>
+      <span class="mission-icon" aria-hidden="true">${mission.icon}</span>
+      <span class="number">0${index + 1} / ${mission.planet}</span>
       <canvas width="416" height="228" aria-hidden="true"></canvas>
     </div>
     <div class="card-copy">
       <h3>${mission.name}</h3>
       <p>${mission.action}</p>
+      <div class="card-meta"><span>${mission.activities.length} challenges</span><span class="card-status"></span></div>
       <button type="button"></button>
     </div>`;
   const button = card.querySelector("button");
@@ -271,6 +457,11 @@ missions.forEach((mission, index) => {
   grid.append(card);
 });
 finalButton.addEventListener("click", () => openMission(-1, finalButton));
+heroButton.addEventListener("click", () => {
+  const next = missions.findIndex((_, index) => !completed.has(index) && checkpoints[index]);
+  const index = next >= 0 ? next : missions.findIndex((_, index) => !completed.has(index));
+  openMission(index, heroButton);
+});
 dialog.querySelector(".close").addEventListener("click", () => dialog.close());
 dialog.addEventListener("close", () => {
   cancelAnimationFrame(frame);
@@ -411,7 +602,7 @@ function paintCard(canvas, { theme, color }, index) {
   ctx.restore();
 }
 
-function paintFlight(canvas, planet, { amount = 0, route = 0, target = 0, stripe = "", orbit = false, dark = false } = {}) {
+function paintFlight(canvas, planet, { amount = 0, route = 0, target = 0, routeMax = 0, stripe = "", orbit = false, dark = false } = {}) {
   const ctx = canvas.getContext("2d");
   const { width: w, height: h } = canvas;
   ctx.clearRect(0, 0, w, h);
@@ -419,7 +610,7 @@ function paintFlight(canvas, planet, { amount = 0, route = 0, target = 0, stripe
     star(ctx, w*x, h*y, i % 3 === 0 ? 6 : 3, i % 3 === 0 ? "#ffe1a4" : "#9db0e8");
   });
   const origin = [w * .11, h * .71];
-  const end = target ? [w * (.11 + target * .116), h * .43] : [w * .82, h * .46];
+  const end = target ? [w * (.11 + target / routeMax * .72), h * .43] : [w * .82, h * .46];
   const path = progress => [
     origin[0] + (end[0] - origin[0]) * progress,
     origin[1] + (end[1] - origin[1]) * progress - Math.sin(progress * Math.PI) * h * .34
@@ -440,13 +631,15 @@ function paintFlight(canvas, planet, { amount = 0, route = 0, target = 0, stripe
   stroke(ctx, Array.from({ length: 26 }, (_, i) => path(i / 25)), "#94ade9", 2);
   ctx.setLineDash([]);
   if (target) {
-    for (let i = 1; i <= 6; i += 1) {
+    for (let i = 1; i <= routeMax; i++) {
       const [x, y] = path(i / target);
-      ellipse(ctx, x, y, 4, 4, i <= route ? "#ffdd8d" : "#9aafdf");
-      ctx.fillStyle = "#fffae8";
-      ctx.font = "bold 16px system-ui";
-      ctx.textAlign = "center";
-      ctx.fillText(i, x, y + (i === target ? 48 : 24));
+      ellipse(ctx, x, y, 4, 4, i <= route ? "#ffdd8d" : "#7d8fbf");
+      if (i % 2 === 0 && Math.abs(i - target) > 1) {
+        ctx.fillStyle = "#fffae8";
+        ctx.font = "bold 16px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(i, x, y + 26);
+      }
     }
   }
   planetArt(ctx, end[0], end[1], h * .15, planet.color, orbit ? "#ffebc1" : "");
@@ -460,6 +653,8 @@ function paintFlight(canvas, planet, { amount = 0, route = 0, target = 0, stripe
   if (preview) {
     const plannedPath = Array.from({ length: 25 }, (_, i) => path(i / 24 * route / target));
     stroke(ctx, plannedPath, "#ffd78a", 4);
+    rocket(ctx, ...path(route / target), .88, .75, stripe, false, dark);
+  } else {
+    rocket(ctx, ...point, h / 175, angle, stripe, amount > 0 && amount < 1, dark);
   }
-  rocket(ctx, ...point, h / 175, angle, stripe, amount > 0 && amount < 1, dark);
 }

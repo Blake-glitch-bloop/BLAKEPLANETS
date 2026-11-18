@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#2147d2">
-  <meta name="description" content="Six school subjects, six space missions, and one big rocket launch.">
+  <meta name="theme-color" content="#0d1025">
+  <meta name="description" content="Play 24 training challenges in six subjects to unlock the final rocket launch.">
   <title>Byummy Space Academy | Blake and Co.</title>
   <link rel="stylesheet" href="./styles.css">
   <script src="./missions.js" defer></script>
@@ -22,30 +22,34 @@
         <a href="#missions">Missions</a>
         <a href="#final-launch">Final Launch</a>
       </nav>
-      <a class="header-progress" href="#missions" aria-label="Mission progress"><span aria-hidden="true">✦</span> <span data-count>0 / 6</span></a>
+      <a class="header-progress" href="#missions" aria-label="Mission progress"><span class="signal" aria-hidden="true"></span> <span data-count>0 / 6</span><span class="progress-suffix"> cleared</span></a>
     </div>
   </header>
   <main id="main">
     <section class="hero" id="home" aria-labelledby="hero-title">
       <div class="shell hero-inner">
         <div class="hero-copy">
-          <p class="eyebrow hero-eyebrow"><span aria-hidden="true">✦</span> MISSION CONTROL</p>
-          <h1 id="hero-title">School skills.<br><em>Space missions.</em></h1>
-          <p>Ever wonder what it takes to send a rocket to space? Put six school subjects to work, one mission at a time.</p>
-          <a class="button orange" href="#missions">Explore missions <span aria-hidden="true">↓</span></a>
+          <p class="eyebrow hero-eyebrow"><span aria-hidden="true">✦</span> BYUMMY FLIGHT TRAINING</p>
+          <h1 id="hero-title">Ready for<br><em>liftoff?</em></h1>
+          <p>Plot routes, build a rocket, and fix problems in flight. Clear six training missions to earn the controls.</p>
+          <div class="hero-actions">
+            <button class="button orange" type="button" id="hero-button">Start training <span aria-hidden="true">↗</span></button>
+            <a class="hero-link" href="#missions">Choose a mission <span aria-hidden="true">↓</span></a>
+          </div>
         </div>
-        <img class="hero-art" src="./launch-illustration.png" alt="" fetchpriority="high">
+        <div class="hero-scene" aria-hidden="true">
+          <img class="hero-art" src="./launch-illustration.png" alt="" fetchpriority="high">
+        </div>
       </div>
     </section>
     <section class="shell missions" id="missions" aria-labelledby="missions-title">
       <div class="section-header">
         <div>
-          <p class="eyebrow accent"><span aria-hidden="true">✦</span> THE FLIGHT PLAN</p>
-          <h2 id="missions-title">Pick a mission</h2>
-          <p>Learn in small steps. Then fly to a new planet.</p>
+          <h2 id="missions-title">Mission roster</h2>
+          <p>24 challenges across six subjects. Pick any planet to begin.</p>
         </div>
         <div class="progress-panel">
-          <div><span id="progress-label">Mission progress</span><strong data-count>0 / 6</strong></div>
+          <div><span id="progress-label">Planets reached</span><strong data-count>0 / 6</strong></div>
           <progress id="progress" max="6" value="0" aria-labelledby="progress-label"></progress>
         </div>
       </div>
@@ -54,9 +58,9 @@
     <section class="shell final-section" id="final-launch" aria-labelledby="final-title">
       <div class="final-panel">
         <div>
-          <p class="eyebrow"><span aria-hidden="true">✦</span> FINAL MISSION</p>
+          <p class="eyebrow"><span aria-hidden="true">✦</span> FLIGHT SIMULATOR</p>
           <h2 id="final-title">The Big Rocket Launch</h2>
-          <p id="final-description">Finish all six missions to unlock the simulator and put your whole flight plan to the test.</p>
+          <p id="final-description">Clear all six planets to unlock the flight deck. You’ll run a full countdown and steer the rocket into orbit.</p>
           <button class="button orange" id="final-button" type="button" disabled>Simulator locked <span aria-hidden="true">↗</span></button>
         </div>
         <canvas width="640" height="300" id="final-art" aria-hidden="true"></canvas>
