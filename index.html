@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2147d2">
+  <meta name="description" content="Six school subjects, six space missions, and one big rocket launch.">
+  <title>Byummy Space Academy | Blake and Co.</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./missions.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <a class="brand" href="#home" aria-label="Byummy Space Academy home">
+        <span class="brand-icon" aria-hidden="true">✦</span>
+        <span>BYUMMY<span class="brand-sub">SPACE ACADEMY</span></span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#missions">Missions</a>
+        <a href="#final-launch">Final Launch</a>
+      </nav>
+      <a class="header-progress" href="#missions" aria-label="Mission progress"><span aria-hidden="true">✦</span> <span data-count>0 / 6</span></a>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero" id="home" aria-labelledby="hero-title">
+      <div class="shell hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow hero-eyebrow"><span aria-hidden="true">✦</span> MISSION CONTROL</p>
+          <h1 id="hero-title">School skills.<br><em>Space missions.</em></h1>
+          <p>Ever wonder what it takes to send a rocket to space? Put six school subjects to work, one mission at a time.</p>
+          <a class="button orange" href="#missions">Explore missions <span aria-hidden="true">↓</span></a>
+        </div>
+        <img class="hero-art" src="./launch-illustration.png" alt="" fetchpriority="high">
+      </div>
+    </section>
+    <section class="shell missions" id="missions" aria-labelledby="missions-title">
+      <div class="section-header">
+        <div>
+          <p class="eyebrow accent"><span aria-hidden="true">✦</span> THE FLIGHT PLAN</p>
+          <h2 id="missions-title">Pick a mission</h2>
+          <p>Learn in small steps. Then fly to a new planet.</p>
+        </div>
+        <div class="progress-panel">
+          <div><span id="progress-label">Mission progress</span><strong data-count>0 / 6</strong></div>
+          <progress id="progress" max="6" value="0" aria-labelledby="progress-label"></progress>
+        </div>
+      </div>
+      <div class="mission-grid" id="mission-grid"></div>
+    </section>
+    <section class="shell final-section" id="final-launch" aria-labelledby="final-title">
+      <div class="final-panel">
+        <div>
+          <p class="eyebrow"><span aria-hidden="true">✦</span> FINAL MISSION</p>
+          <h2 id="final-title">The Big Rocket Launch</h2>
+          <p id="final-description">Finish all six missions to unlock the simulator and put your whole flight plan to the test.</p>
+          <button class="button orange" id="final-button" type="button" disabled>Simulator locked <span aria-hidden="true">↗</span></button>
+        </div>
+        <canvas width="640" height="300" id="final-art" aria-hidden="true"></canvas>
+      </div>
+    </section>
+  </main>
+  <footer class="shell site-footer">
+    <span><span aria-hidden="true">✦</span> BYUMMY SPACE ACADEMY</span>
+    <span>Made by Blake and Co.</span>
+  </footer>
+  <dialog id="mission-dialog" aria-labelledby="screen-title">
+    <div class="dialog-top">
+      <span id="dialog-label" class="eyebrow"></span>
+      <button type="button" class="close" aria-label="Close mission">×</button>
+    </div>
+    <div class="dialog-body" id="dialog-body"></div>
+  </dialog>
+</body>
+</html>
